@@ -2,258 +2,186 @@
 #include <string>
 #include <cstdlib>
 #include <ctime>
-#include <thread>
-#include <chrono>
 
-// ─────────────────────────────────────────────
-//  Constants
-// ─────────────────────────────────────────────
-const int PLAYER_MAX_HP      = 100;
-const int PLAYER_ATTACK      = 18;
-const int POWER_METER_MAX    = 3;   // fills after 3 normal attacks
-const int SPECIAL_DAMAGE     = 45;
-const int DEFEND_REDUCTION   = 10;  // flat damage blocked when defending
+using namespace std;
 
-const int ENEMY_MAX_HP       = 120;
-const int ENEMY_ATTACK_MIN   = 10;
-const int ENEMY_ATTACK_MAX   = 22;
+// ── Constants ──────────────────────────────────────────
+const int POWER_METER_MAX = 3;
 
-// ─────────────────────────────────────────────
-//  Utility helpers
-// ─────────────────────────────────────────────
-void pause(int ms = 600) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(ms));
-}
-
-void printLine(char c = '-', int len = 52) {
-    std::cout << std::string(len, c) << "\n";
-}
-
-int clamp(int value, int minVal, int maxVal) {
-    if (value < minVal) return minVal;
-    if (value > maxVal) return maxVal;
-    return value;
-}
-
-int randRange(int lo, int hi) {
-    return lo + std::rand() % (hi - lo + 1);
-}
-
-// ─────────────────────────────────────────────
-//  Structs
-// ─────────────────────────────────────────────
-struct Player {
-    std::string name;
+// ── Player Class ───────────────────────────────────────
+class Player {
+public:
+    string name;
     int hp;
-    int maxHp;
     int attack;
-    int powerMeter;     // current charge (0 – POWER_METER_MAX)
+    int powerMeter;
 
-    bool isAlive() const { return hp > 0; }
+    Player(string playerName) {
+        name       = playerName;
+        hp         = 100;
+        attack     = 15;
+        powerMeter = 0;
+    }
+
+    bool isAlive() {
+        return hp > 0;
+    }
+
+    void showStatus() {
+        cout << "Player Health: " << hp << endl;
+        cout << "Power: " << powerMeter << "/" << POWER_METER_MAX << endl;
+    }
+
+    // Normal attack: deals fixed damage and increases power meter
+    void attackEnemy(int &enemyHp) {
+        int damage = attack;
+        enemyHp -= damage;
+        if (enemyHp < 0) enemyHp = 0;
+
+        if (powerMeter < POWER_METER_MAX)
+            powerMeter++;
+
+        cout << name << " attacks for " << damage << " damage!" << endl;
+        cout << "Power meter: " << powerMeter << "/" << POWER_METER_MAX << endl;
+    }
+
+    // Special move: deals high damage, resets power meter
+    void specialMove(int &enemyHp) {
+        int damage = 40;
+        enemyHp -= damage;
+        if (enemyHp < 0) enemyHp = 0;
+
+        powerMeter = 0;
+
+        cout << name << " uses SPECIAL MOVE for " << damage << " damage!" << endl;
+        cout << "Power meter reset to 0." << endl;
+    }
+
+    // Defend: reduces incoming damage by a fixed amount
+    void defend() {
+        cout << name << " defends! Incoming damage will be reduced." << endl;
+    }
 };
 
-struct Enemy {
-    std::string name;
+// ── Enemy Class ────────────────────────────────────────
+class Enemy {
+public:
+    string name;
     int hp;
-    int maxHp;
-    int attackMin;
-    int attackMax;
 
-    bool isAlive() const { return hp > 0; }
+    Enemy() {
+        name = "Dark Knight";
+        hp   = 120;
+    }
+
+    bool isAlive() {
+        return hp > 0;
+    }
+
+    void showStatus() {
+        cout << "Enemy Health: " << hp << endl;
+    }
+
+    // Enemy attacks the player with a random damage value
+    void attackPlayer(int &playerHp, bool playerDefending) {
+        int damage = 10 + rand() % 11;  // random damage between 10 and 20
+
+        if (playerDefending) {
+            damage -= 8;
+            if (damage < 0) damage = 0;
+            cout << name << " attacks, but the defense reduced it to " << damage << " damage!" << endl;
+        } else {
+            cout << name << " attacks for " << damage << " damage!" << endl;
+        }
+
+        playerHp -= damage;
+        if (playerHp < 0) playerHp = 0;
+    }
 };
 
-// ─────────────────────────────────────────────
-//  Display helpers
-// ─────────────────────────────────────────────
-std::string hpBar(int current, int max, int width = 20) {
-    int filled = (current * width) / max;
-    filled = clamp(filled, 0, width);
-    return "[" + std::string(filled, '#') + std::string(width - filled, '.') + "]";
-}
-
-std::string powerBar(int current, int max) {
-    std::string bar = "[";
-    for (int i = 0; i < max; ++i)
-        bar += (i < current) ? '*' : '-';
-    bar += "]";
-    return bar;
-}
-
-void displayStatus(const Player& p, const Enemy& e) {
-    printLine('=');
-    std::cout << " PLAYER  " << p.name << "\n";
-    std::cout << "   HP    " << hpBar(p.hp, p.maxHp)
-              << "  " << p.hp << "/" << p.maxHp << "\n";
-    std::cout << "   POWER " << powerBar(p.powerMeter, POWER_METER_MAX)
-              << "  " << p.powerMeter << "/" << POWER_METER_MAX << "\n";
-    printLine('-');
-    std::cout << " ENEMY   " << e.name << "\n";
-    std::cout << "   HP    " << hpBar(e.hp, e.maxHp)
-              << "  " << e.hp << "/" << e.maxHp << "\n";
-    printLine('=');
-}
-
-void displayActions(const Player& p) {
-    std::cout << "\n  Choose your action:\n";
-    std::cout << "  [1] Attack        (deals ~" << p.attack << " damage, +1 power)\n";
-    std::cout << "  [2] Defend        (reduces next hit by " << DEFEND_REDUCTION << ")\n";
-    if (p.powerMeter >= POWER_METER_MAX)
-        std::cout << "  [3] SPECIAL MOVE  (deals " << SPECIAL_DAMAGE << " damage!) [READY!]\n";
-    else
-        std::cout << "  [3] Special Move  (locked - power not full)\n";
-    std::cout << "\n  > ";
-}
-
-// ─────────────────────────────────────────────
-//  Core battle logic
-// ─────────────────────────────────────────────
-void playerTurn(Player& player, Enemy& enemy, bool& defending) {
-    displayActions(player);
-
-    int choice = 0;
-    std::cin >> choice;
-
-    // Validate input
-    while (std::cin.fail() || choice < 1 || choice > 3 ||
-           (choice == 3 && player.powerMeter < POWER_METER_MAX)) {
-        std::cin.clear();
-        std::cin.ignore(1000, '\n');
-        if (choice == 3 && player.powerMeter < POWER_METER_MAX)
-            std::cout << "  Power meter not full yet! Choose 1 or 2.\n  > ";
-        else
-            std::cout << "  Invalid choice. Enter 1, 2, or 3.\n  > ";
-        std::cin >> choice;
-    }
-    std::cin.ignore(1000, '\n');
-
-    std::cout << "\n";
-    pause(400);
-
-    switch (choice) {
-        case 1: { // Normal attack
-            int dmg = randRange(player.attack - 3, player.attack + 5);
-            enemy.hp = clamp(enemy.hp - dmg, 0, enemy.maxHp);
-            player.powerMeter = clamp(player.powerMeter + 1, 0, POWER_METER_MAX);
-            defending = false;
-            std::cout << "  ⚔  " << player.name << " attacks " << enemy.name
-                      << " for " << dmg << " damage!\n";
-            std::cout << "  (+1 power charge)\n";
-            break;
-        }
-        case 2: { // Defend
-            defending = true;
-            std::cout << "  🛡  " << player.name << " takes a defensive stance!\n";
-            std::cout << "  (Incoming damage reduced by " << DEFEND_REDUCTION << ")\n";
-            break;
-        }
-        case 3: { // Special move
-            int dmg = randRange(SPECIAL_DAMAGE - 5, SPECIAL_DAMAGE + 5);
-            enemy.hp = clamp(enemy.hp - dmg, 0, enemy.maxHp);
-            player.powerMeter = 0;
-            defending = false;
-            std::cout << "  ✨ " << player.name << " unleashes the SPECIAL MOVE!\n";
-            std::cout << "  ★★★ CRITICAL HIT for " << dmg << " damage! ★★★\n";
-            std::cout << "  (Power meter reset)\n";
-            break;
-        }
-    }
-    pause(700);
-}
-
-void enemyTurn(Player& player, const Enemy& enemy, bool defending) {
-    int dmg = randRange(enemy.attackMin, enemy.attackMax);
-    if (defending) {
-        dmg = clamp(dmg - DEFEND_REDUCTION, 0, dmg);
-        std::cout << "\n  💥 " << enemy.name << " attacks " << player.name << "!\n";
-        std::cout << "  Shield absorbs " << DEFEND_REDUCTION
-                  << " damage — " << player.name << " takes " << dmg << " damage.\n";
-    } else {
-        std::cout << "\n  💥 " << enemy.name << " attacks " << player.name
-                  << " for " << dmg << " damage!\n";
-    }
-    player.hp = clamp(player.hp - dmg, 0, player.maxHp);
-    pause(700);
-}
-
-// ─────────────────────────────────────────────
-//  Main
-// ─────────────────────────────────────────────
+// ── Main ───────────────────────────────────────────────
 int main() {
-    std::srand(static_cast<unsigned>(std::time(nullptr)));
+    srand(time(0));
 
-    // ── Title screen ──
-    printLine('=');
-    std::cout << "        *** ARENA OF SHADOWS ***\n";
-    std::cout << "           Turn-Based Battle\n";
-    printLine('=');
-    std::cout << "\n";
-
-    // ── Get player name ──
-    std::string playerName;
-    std::cout << "  Enter your warrior's name: ";
-    std::getline(std::cin, playerName);
+    // Get player name
+    string playerName;
+    cout << "Enter your name: ";
+    getline(cin, playerName);
     if (playerName.empty()) playerName = "Hero";
 
-    // ── Initialise characters ──
-    Player player;
-    player.name       = playerName;
-    player.hp         = PLAYER_MAX_HP;
-    player.maxHp      = PLAYER_MAX_HP;
-    player.attack     = PLAYER_ATTACK;
-    player.powerMeter = 0;
+    // Create player and enemy
+    Player player(playerName);
+    Enemy  enemy;
 
-    Enemy enemy;
-    enemy.name      = "Dark Knight";
-    enemy.hp        = ENEMY_MAX_HP;
-    enemy.maxHp     = ENEMY_MAX_HP;
-    enemy.attackMin = ENEMY_ATTACK_MIN;
-    enemy.attackMax = ENEMY_ATTACK_MAX;
+    cout << "\nWelcome, " << player.name << "!" << endl;
+    cout << "You are fighting: " << enemy.name << endl;
+    cout << "-------------------------------" << endl;
 
-    std::cout << "\n  Welcome, " << player.name << "!\n";
-    std::cout << "  You face the fearsome " << enemy.name << "!\n\n";
-    pause(1000);
+    int turn = 1;
 
-    // ── Battle loop ──
-    int turn    = 1;
-    bool defend = false;
-
+    // ── Battle loop ────────────────────────────────────
     while (player.isAlive() && enemy.isAlive()) {
-        std::cout << "\n";
-        printLine('~');
-        std::cout << "  TURN " << turn << "\n";
-        printLine('~');
 
-        displayStatus(player, enemy);
+        cout << "\n--- Turn " << turn << " ---" << endl;
+        player.showStatus();
+        enemy.showStatus();
 
-        // Player's turn
-        playerTurn(player, enemy, defend);
+        // Show available actions
+        cout << "\nChoose an action:" << endl;
+        cout << "1. Attack" << endl;
+        cout << "2. Defend" << endl;
+        if (player.powerMeter >= POWER_METER_MAX)
+            cout << "3. Special Move (READY!)" << endl;
+        else
+            cout << "3. Special Move (locked - need full power)" << endl;
+        cout << "Enter choice: ";
 
-        if (!enemy.isAlive()) break;   // enemy defeated mid-turn
+        int choice;
+        cin >> choice;
 
-        // Enemy's turn
-        enemyTurn(player, enemy, defend);
-        defend = false;  // defence only lasts one hit
+        // Validate input
+        if (choice < 1 || choice > 3) {
+            cout << "Invalid choice. Please enter 1, 2, or 3." << endl;
+            continue;
+        }
+        if (choice == 3 && player.powerMeter < POWER_METER_MAX) {
+            cout << "Power meter is not full yet!" << endl;
+            continue;
+        }
 
-        ++turn;
+        // Track if player chose to defend this turn
+        bool playerDefending = false;
+
+        // ── Player's action ────────────────────────────
+        if (choice == 1) {
+            player.attackEnemy(enemy.hp);
+        } else if (choice == 2) {
+            player.defend();
+            playerDefending = true;
+        } else if (choice == 3) {
+            player.specialMove(enemy.hp);
+        }
+
+        // Check if enemy is defeated
+        if (!enemy.isAlive()) {
+            break;
+        }
+
+        // ── Enemy's action ─────────────────────────────
+        enemy.attackPlayer(player.hp, playerDefending);
+
+        turn++;
     }
 
-    // ── End screen ──
-    std::cout << "\n";
-    printLine('#');
+    // ── End result ─────────────────────────────────────
+    cout << "\n===============================" << endl;
     if (player.isAlive()) {
-        std::cout << "\n  🏆 VICTORY!\n";
-        std::cout << "  " << player.name << " defeats the " << enemy.name << "!\n";
-        std::cout << "  Remaining HP: " << player.hp << "/" << player.maxHp << "\n";
+        cout << "VICTORY! " << player.name << " defeated " << enemy.name << "!" << endl;
+        cout << "Remaining HP: " << player.hp << endl;
     } else {
-        std::cout << "\n  💀 GAME OVER!\n";
-        std::cout << "  " << player.name << " has fallen...\n";
-        std::cout << "  The " << enemy.name << " stands victorious.\n";
+        cout << "GAME OVER! " << player.name << " was defeated." << endl;
     }
-    std::cout << "\n";
-    printLine('#');
-    std::cout << "\n  Thanks for playing! Press Enter to quit.\n";
-    std::cin.ignore(1000, '\n');
-    std::cin.get();
+    cout << "===============================" << endl;
 
     return 0;
 }
